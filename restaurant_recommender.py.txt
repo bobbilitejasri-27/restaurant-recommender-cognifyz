@@ -1,0 +1,60 @@
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+def load_data(file_path, nrows=20000):
+    """Load and preprocess restaurant dataset"""
+    df = pd.read_csv(file_path, 
+                     encoding='utf-8', 
+                     on_bad_lines='skip',
+                     low_memory=False,
+                     nrows=nrows)
+    
+    df = df.dropna(subset=['cuisines', 'average_cost_for_two'])
+    df['cuisines'] = df['cuisines'].astype(str).str.lower()
+    
+    print(f"Data loaded successfully! Rows: {len(df)}")
+    return df
+
+def build_model(df):
+    """Build TF-IDF and Cosine Similarity model"""
+    tfidf = TfidfVectorizer(stop_words='english', max_features=5000)
+    tfidf_matrix = tfidf.fit_transform(df['cuisines'])
+    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+    return cosine_sim
+
+def recommend_restaurant(df, cosine_sim, cuisine_pref, top_n=5, max_cost=None):
+    """Recommend restaurants based on cuisine and budget"""
+    matches = df[df['cuisines'].str.contains(cuisine_pref.lower(), na=False)]
+    
+    if max_cost:
+        matches = matches[matches['average_cost_for_two'] <= max_cost]
+    
+    if matches.empty:
+        return "No restaurants found for that cuisine and budget."
+    
+    idx = matches.index[0]
+    sim_scores = list(enumerate(cosine_sim[idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+    sim_scores = sim_scores[1:top_n+1]
+    restaurant_indices = [i[0] for i in sim_scores]
+    
+    result = df.iloc[restaurant_indices][['name', 'cuisines', 'average_cost_for_two']]
+    return result.drop_duplicates(subset=['name'])
+
+if __name__ == "__main__":
+    # Load data
+    df = load_data('Indian-Resturants.csv')
+    
+    # Build model
+    cosine_sim = build_model(df)
+    
+    # Test recommendations
+    print("\n--- Italian Restaurants ---")
+    print(recommend_restaurant(df, cosine_sim, 'italian'))
+    
+    print("\n--- Chinese Restaurants under ₹500 ---")
+    print(recommend_restaurant(df, cosine_sim, 'chinese', max_cost=500))
+    
+    print("\n--- North Indian Restaurants ---")
+    print(recommend_restaurant(df, cosine_sim, 'north indian'))
